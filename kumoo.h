@@ -1,7 +1,7 @@
 #include <string.h>
 #define ADDR_SIZE 16
 #define MAX_PROCESSES 10 // 최대 프로세스 수
-#define PAGE_SIZE 4096
+#define PAGE_SIZE 64
 #define PFNUM 5     // 물리 메모리 프레임 수
 #define SFNUM 16384 // 스왑 공간 프레임 수
 #define MAX_FRAMES 4096
@@ -25,7 +25,7 @@ void ku_dump_pmem(void);
 void ku_dump_swap(void);
 void enqueue(int frame_number);
 
-int pfnum;                 // 페이지 프레임 수
+int pfnum;                 // 페이지 프레임
 int sfnum;                 // 스왑 프레임 수
 int pmem_free_list[PFNUM]; // 전역 배열로 선언
 int swap_free_list[SFNUM]; // 스왑 공간 자유 목록
