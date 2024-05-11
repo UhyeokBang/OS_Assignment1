@@ -2,9 +2,12 @@
 #define ADDR_SIZE 16
 #define MAX_PROCESSES 10 // 최대 프로세스 수
 #define PAGE_SIZE 64
-#define PFNUM 5     // 물리 메모리 프레임 수
+#define PFNUM 4096  // 물리 메모리 프레임 수
 #define SFNUM 16384 // 스왑 공간 프레임 수
 #define MAX_FRAMES 4096
+
+int pfnum; // 페이지 프레임
+int sfnum; // 스왑 프레임 수
 
 struct pcb
 {
@@ -25,8 +28,6 @@ void ku_dump_pmem(void);
 void ku_dump_swap(void);
 void enqueue(int frame_number);
 
-int pfnum;                 // 페이지 프레임
-int sfnum;                 // 스왑 프레임 수
 int pmem_free_list[PFNUM]; // 전역 배열로 선언
 int swap_free_list[SFNUM]; // 스왑 공간 자유 목록
 
@@ -101,6 +102,37 @@ int dequeue()
     return frame_number;
 }
 
+int is_protected_frame(int frame_number)
+{
+    // 모든 프로세스의 페이지 디렉토리를 검사
+    for (int i = 0; i < MAX_PROCESSES; i++)
+    {
+        if (pcb[i].is_in_memory)
+        {                                         // 메모리에 있는 프로세스인지 확인
+            unsigned short *pgdir = pcb[i].pgdir; // 해당 프로세스의 페이지 디렉토리 주소
+            // 각 페이지 디렉토리의 모든 PDE를 검사
+            for (int pd_index = 0; pd_index < 32; pd_index++)
+            {
+                unsigned short pde = pgdir[pd_index];
+                if (pde & 0x0001 && ((pde >> 4) == frame_number))
+                { // PDE가 present 상태이고, 해당 프레임을 가리키는 경우
+                    unsigned short *pt = (unsigned short *)(pmem + (pde >> 4) * PAGE_SIZE);
+                    // 해당 페이지 테이블에서 유효한 PTE가 하나라도 있는지 검사
+                    for (int pt_index = 0; pt_index < 32; pt_index++)
+                    {
+                        if (pt[pt_index] & 0x0001)
+                        {
+                            return 1; // 이 프레임은 페이지 테이블로서 사용 중이며, 적어도 하나의 유효한 PTE를 포함하고 있음
+                        }
+                    }
+                    break; // 이미 이 프레임은 유효한 PTE를 포함하지 않는 것으로 확인되었으므로 다른 검사는 필요 없음
+                }
+            }
+        }
+    }
+    return 0; // 해당 프레임은 보호할 필요가 없음
+}
+
 int evict_frame()
 {
     if (front == rear)
@@ -110,10 +142,9 @@ int evict_frame()
     }
 
     int frame_to_evict = dequeue(); // FIFO 큐에서 가장 오래된 프레임을 꺼냄
-
-    while (frame_to_evict != -1 && is_page_directory_frame(frame_to_evict))
+    while (frame_to_evict != -1 && (is_page_directory_frame(frame_to_evict) || is_protected_frame(frame_to_evict)))
     {
-        enqueue(frame_to_evict);    // 페이지 디렉토리 프레임을 큐에 다시 넣음
+        enqueue(frame_to_evict);    // 페이지 디렉토리 프레임이거나 보호된 프레임을 큐에 다시 넣음
         frame_to_evict = dequeue(); // 다음 프레임 시도
     }
 
@@ -169,6 +200,7 @@ void ku_freelist_init()
     {
         swap_free_list[i] = 0;
     }
+    swap_free_list[0] = 1;
 }
 
 int ku_proc_init(int argc, char *argv[])
@@ -280,7 +312,6 @@ int ku_scheduler(unsigned short arg1)
 
 int ku_pgfault_handler(unsigned short arg1)
 {
-    // segmentation fault 를 발생시켜야함 (아직 구현 안함)
     unsigned int vbase = current->vbase;
     unsigned int vlength = current->vlength;
 
