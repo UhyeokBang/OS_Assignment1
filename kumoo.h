@@ -485,7 +485,6 @@ int ku_proc_exit(unsigned short arg1)
         }
     }
 
-    free(pcb[found].pgdir);
     pcb[found].pgdir = NULL;
 
     // 파일 디스크립터 닫기
